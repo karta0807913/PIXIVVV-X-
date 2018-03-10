@@ -1,4 +1,4 @@
-﻿from PIL import Image, ImageTk
+﻿from PIL import Image, ImageTk, ImageDraw, ImageFont
 from bs4 import BeautifulSoup
 import tkinter as tk
 import io
@@ -15,6 +15,7 @@ import re
 import ctypes
 import cv2
 import numpy as np
+import socket
 
 loginpage = 'http://www.pixiv.net/login.php/'
 loginposturl = 'https://accounts.pixiv.net/api/login?lang=zh_tw'
@@ -24,7 +25,7 @@ haveNaxt = [False, False]
 limit = 4000
 threadLines = 5
 nowThreadLines = 0
-minBookNum = 100
+minBookNum = 250
 illustList = []
 images  = []
 TkImage = []
@@ -111,6 +112,10 @@ class Application(tk.Frame):
         tk.Frame.__init__(self, master)
         self.pack()
         self.createWidgets()
+        
+        
+    def minBookNumTrace(self, *args):
+        self.minBookNumStringVar.set(re.sub(r'[^0-9]', '', self.minBookNumStringVar.get()))
 
     def createWidgets(self):
         self.input        = tk.Entry(self) 
@@ -123,7 +128,14 @@ class Application(tk.Frame):
 
         self.saveButton = tk.Button(self)
         self.saveButton['text'] = 'save'
-        self.saveButton.grid(row=7, column=0,)
+        self.saveButton.grid(row=8, column=0,)
+        
+        self.minBookNumStringVar = tk.StringVar()
+        self.minBookNumStringVar.trace('w', self.minBookNumTrace)
+
+        self.minBookNum = tk.Entry(self, textvariable=self.minBookNumStringVar)
+        self.minBookNum['width'] = 60
+        self.minBookNum.grid(row=7, column=0,)
 
         self.scrollbar = tk.Scrollbar(self)
         self.scrollbar.grid(row=1, column=1, sticky='NS')
@@ -172,12 +184,8 @@ def makeillustList(haveNaxt, url, images, TkImage, buttons, searchStr):
         time.sleep(1)
     illustList = sorted(illustList, key=getKey, reverse=True)
     f = open(searchStr + '.txt', 'wt', encoding='utf-8')
-    for list in illustList:
-        f.write('artistName : '     + list['artistName']        + '\n')
-        f.write('illustName : '     + list['illustName']        + '\n')
-        f.write('illustNum : '      + str(list['illustNum'])    + '\n')
-        f.write('book_num : '       + str(list['book_num'])     + '\n')
-        f.write('illustUrl : '      + list['illustUrl']         + '\n\n')
+    s = json.dumps(illustList, ensure_ascii=False)
+    f.write(s)
     f.close()
     i = 0
     print('sorting')
@@ -187,10 +195,18 @@ def makeillustList(haveNaxt, url, images, TkImage, buttons, searchStr):
             images[i] = (Image.open(byteIO))
             images[i].convert('RGBA')
             images[i].save(illustList[i]['smallImageFileName'])
+            d = ImageDraw.Draw(images[i])
+            d.text((images[i].width / 2, images[i].height/ 2 * 1.5), str(illustList[i]['book_num']), fill=(255,0,0,0), font=ImageFont.truetype("arial.ttf", size=40))
+            del d
             byteIO.close()
         else:
             images[i] = (Image.open(illustList[i]['smallImageFileName']))
+            d = ImageDraw.Draw(images[i])
+            d.text((images[i].width / 2, images[i].height/ 2 * 1.5), str(illustList[i]['book_num']), fill=(255,0,0,0), font=ImageFont.truetype("arial.ttf", size=40))
+            del d
         img = ImageTk.PhotoImage(images[i])
+        while i >= len(TkImage) :
+            time.sleep(0.5)
         TkImage[i] = (img)
         buttons[i]['image'] = TkImage[i]
         buttons[i]['command'] = lambda k = i: threading._start_new_thread(showImage, (illustList[k],))
@@ -220,9 +236,16 @@ def loadImages(limit, images):
             arr.tofile(illustList[i]['smallImageFileName'])
             img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
             img = Image.fromarray(img)
+            d = ImageDraw.Draw(img)
+            d.text((img.width / 2, img.height/ 2 * 1.5), str(illustList[i]['book_num']), fill=(255,0,0,0), font=ImageFont.truetype("arial.ttf", size=40))
+            del d
             images.append(img)
         else:
-            images.append(Image.open(illustList[i]['smallImageFileName']))
+            img = Image.open(illustList[i]['smallImageFileName'])
+            d = ImageDraw.Draw(img)
+            d.text((img.width / 2, img.height / 2 * 1.5), str(illustList[i]['book_num']), fill=(255,0,0,0), font=ImageFont.truetype("arial.ttf", size=40))
+            del d
+            images.append(img)
         i = i + 1
 
 def saveImage(illustInfo):
@@ -235,7 +258,7 @@ def saveImage(illustInfo):
                 response = opener.open('http://www.pixiv.net/member_illust.php?mode=medium&illust_id=' + str(illustInfo['illustNum']), timeout=4)
                 soup = BeautifulSoup(response.read(), 'html.parser')
                 break
-            except urllib.error.URLError:
+            except (urllib.error.URLError, socket.timeout) as e:
                 continue
         findres = soup.find('img', class_='original-image')
 
@@ -267,13 +290,19 @@ def saveImage(illustInfo):
         return
     nowThreadLines -= 1
 
-def saveAllImages():
+def saveAllImages(minBookNum):
     global haveNaxt
     global illustList
     global limit
     global threadLines
     global nowThreadLines
-    global minBookNum
+
+    if minBookNum == "" or int(minBookNum) == 0 :
+        Mbox("Error", "Please input book number", 0)
+        return
+
+    minBookNum = int(minBookNum)
+
     if haveNaxt[1] is True:
         return;
     haveNaxt[1] = True
@@ -306,14 +335,21 @@ def showImage(illustInfo):
         findres = soup.find('dev', class_='player toggle')
         #gif
         if findres is not None:
-            nowThreadLines -= 1
+            Mbox("Sorry", "I can not show gif, illust id is " + str(illustInfo['illustNum']), 0)
             return
         #圖集
         i = 0
-        response = opener.open('http://www.pixiv.net/member_illust.php?mode=manga&illust_id=' + str(illustInfo['illustNum']))
+        try:
+            response = opener.open('http://www.pixiv.net/member_illust.php?mode=manga&illust_id=' + str(illustInfo['illustNum']))
+        except urllib.error.HTTPError:
+            Mbox("Sorry", "I can not show gif, illust id is " + str(illustInfo['illustNum']), 0)
+            return 
         soup = BeautifulSoup(response.read(), 'html.parser')
         for url in soup.find_all('img', {'data-filter' : 'manga-image'}, class_='image ui-scroll-view'):
-            fn = filename[0 : len(filename) - 4] + '-' + str(i) + '-' + filename[len(filename) - 4 : len(filename)] # <filename> - <str(i)> .jpg
+            if(i == 0):
+                fn=filename
+            else:
+                fn = filename[0 : len(filename) - 4] + '-' + str(i) + filename[len(filename) - 4 : len(filename)] # <filename> - <str(i)> .jpg
             if (not (os.path.isfile(fn))):
                 arr = np.asarray(bytearray(opener.open(url['data-src']).read()), dtype=np.uint8)
                 img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
@@ -386,6 +422,6 @@ opener.open(loginposturl, postData)
 root = tk.Tk()
 root.resizable(False,False)
 frame = Application(master=root)
-frame.searchButton['command'] = lambda : searchStart(frame.input.get(),haveNaxt, limit, buttons,)
-frame.saveButton['command'] = lambda : threading._start_new_thread(saveAllImages, ());
+frame.searchButton['command'] = lambda : searchStart(frame.input.get(), haveNaxt, limit, buttons,)
+frame.saveButton['command'] = lambda : threading._start_new_thread(saveAllImages, (frame.minBookNum.get(), ));
 frame.mainloop()
