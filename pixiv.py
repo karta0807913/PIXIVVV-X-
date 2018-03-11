@@ -103,15 +103,22 @@ def searchStart(searchStr, haveNaxt, limit, buttons):
         illustList = []
         images  = []
         TkImage = []
+        frame._flushPage(1)
         threading._start_new_thread(makeillustList, (haveNaxt, url, images, TkImage, buttons, searchStr, ))
-        threading._start_new_thread(loadImages, (limit, images, ))
-        threading._start_new_thread(makeView, (limit, frame, images, buttons, TkImage, searchStr, ))
 
 class Application(tk.Frame):
     def __init__(self, master=None):
         tk.Frame.__init__(self, master)
         self.pack()
         self.createWidgets()
+        self.imagesPerPage = 750
+        self.makeViewIndex = 0
+        self.resetMakeViewFunction = False
+        self.makeViewIndexLock = threading.Lock()
+        self.makeViewThreadNumLock = threading.Lock()
+        self.maxImageThread = 3
+        self.imageThreadNum = 0
+        threading._start_new_thread(self.makeView, ())
         
         
     def minBookNumTrace(self, *args):
@@ -120,28 +127,38 @@ class Application(tk.Frame):
     def createWidgets(self):
         self.input        = tk.Entry(self) 
         self.input['width'] = 60
-        self.input.grid(row=0, column=0, columnspan=6)
+        self.input.grid(row=0, column=1, columnspan=6)
 
         self.searchButton = tk.Button(self)
         self.searchButton['text'] = 'search'
-        self.searchButton.grid(row=0, column=7,)
+        self.searchButton.grid(row=0, column=8,)
 
         self.saveButton = tk.Button(self)
         self.saveButton['text'] = 'save'
-        self.saveButton.grid(row=8, column=0,)
+        self.saveButton.grid(row=8, column=1,)
         
         self.minBookNumStringVar = tk.StringVar()
         self.minBookNumStringVar.trace('w', self.minBookNumTrace)
 
         self.minBookNum = tk.Entry(self, textvariable=self.minBookNumStringVar)
         self.minBookNum['width'] = 60
-        self.minBookNum.grid(row=7, column=0,)
+        self.minBookNum.grid(row=7, column=1,)
+
+        self.nextPageButton = tk.Button(self)
+        self.nextPageButton['text'] = ">>"
+        self.nextPageButton['command'] = self.nextPage
+        self.nextPageButton.grid(row=7, column=2)
+
+        self.fontPageButton = tk.Button(self)
+        self.fontPageButton['text'] = "<<"
+        self.fontPageButton['command'] = self.fontPage
+        self.fontPageButton.grid(row=7, column=0)
 
         self.scrollbar = tk.Scrollbar(self)
-        self.scrollbar.grid(row=1, column=1, sticky='NS')
+        self.scrollbar.grid(row=1, column=2, sticky='NS')
         self.canvas = tk.Canvas(self, bd=0, highlightthickness=0,
                         yscrollcommand=self.scrollbar.set, height=500)
-        self.canvas.grid(row=1, column=0)
+        self.canvas.grid(row=1, column=1)
         self.scrollbar.config(command=self.canvas.yview)
 
         # reset the view
@@ -160,6 +177,119 @@ class Application(tk.Frame):
                 # update the canvas's width to fit the inner frame
                 self.canvas.config(width=interior.winfo_reqwidth())
         interior.bind('<Configure>', _configure_interior) #如果視窗大小變化
+
+    def nextPage(self):
+        if self.imagesPerPage + self.makeViewIndex > len(illustList):
+            Mbox("Info", "this is the last page", 0)
+            return 
+        self.makeViewIndexLock.acquire()
+        self.resetMakeViewFunction = True
+        self.makeViewIndex += self.imagesPerPage
+        self.makeViewIndexLock.release()
+
+    def fontPage(self):
+        if self.makeViewIndex - self.imagesPerPage < 0:
+            Mbox("Info", "this is the home page", 0)
+            return 
+        self.makeViewIndexLock.acquire()
+        self.resetMakeViewFunction = True
+        self.makeViewIndex -= self.imagesPerPage
+        self.makeViewIndexLock.release()
+
+    def setPage(self, pageIndex):
+        if self.imagesPerPage * (pageIndex - 1) < 0 or self.imagesPerPage * (pageIndex - 1) > len(illustList) :
+            Mbox("Info", "Error page count", 0)
+            return
+        if self.imagesPerPage * (pageIndex - 1) == self.makeViewIndex :
+            return
+        self.makeViewIndexLock.acquire()
+        self.resetMakeViewFunction = True
+        self.makeViewIndex = self.imagesPerPage * (pageIndex - 1)
+        self.makeViewIndexLock.release()
+
+    def _flushPage(self, pageIndex) :
+        if self.imagesPerPage * (pageIndex - 1) < 0 or self.imagesPerPage * (pageIndex - 1) > len(illustList) :
+            Mbox("Info", "Error page count", 0)
+            return
+        self.makeViewIndexLock.acquire()
+        self.resetMakeViewFunction = True
+        self.makeViewIndex = self.imagesPerPage * (pageIndex - 1)
+        self.makeViewIndexLock.release()
+
+    def makeView(self):
+        global illustList
+        global buttons
+        tkImage = [ImageTk.PhotoImage(Image.new("RGBA", (240, 240), (255, 255, 255)))] * self.imagesPerPage
+
+        def loadImages(i, index):
+            global buttons
+            global illustList
+            if (not(os.path.isfile(illustList[i]['smallImageFileName']))):
+                arr = np.asarray(bytearray(opener.open(illustList[i]['smallImgUrl']).read()), dtype=np.uint8)
+                img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+                arr.tofile(illustList[i]['smallImageFileName'])
+                img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                img = Image.fromarray(img)
+                d = ImageDraw.Draw(img)
+                if len(img.mode) < 3 :
+                    color=(255)
+                else :
+                    color=(255,0,0,0)
+                d.text((img.width / 2, img.height/ 2 * 1.5), str(illustList[i]['book_num']), fill=color, font=ImageFont.truetype("arial.ttf", size=40))
+                del d
+                tkImage[index] = ImageTk.PhotoImage(img)
+                buttons[index]['image'] = tkImage[index]
+            else:
+                img = Image.open(illustList[i]['smallImageFileName'])
+                d = ImageDraw.Draw(img)
+                if len(img.mode) < 3:
+                    color=(255)
+                else :
+                    color=(255,0,0,0)
+                d.text((img.width / 2, img.height/ 2 * 1.5), str(illustList[i]['book_num']), fill=color, font=ImageFont.truetype("arial.ttf", size=40))
+                del d
+                tkImage[index] = ImageTk.PhotoImage(img)
+                buttons[index]['image'] = tkImage[index]
+
+            self.makeViewThreadNumLock.acquire()
+            self.imageThreadNum -= 1
+            self.makeViewThreadNumLock.release()
+
+        i = 0
+        while True:
+
+            self.makeViewIndexLock.acquire()
+            if self.resetMakeViewFunction :
+                i = 0
+                self.resetMakeViewFunction = False
+            self.makeViewIndexLock.release()
+
+            if self.imageThreadNum >= self.maxImageThread or not i < self.imagesPerPage or not i + self.makeViewIndex < len(illustList):
+                time.sleep(0.2)
+                continue
+
+            self.makeViewIndexLock.acquire()
+            if self.resetMakeViewFunction :
+                i = 0
+                self.resetMakeViewFunction = False
+            if i < len(buttons):
+                buttons[i]['command'] = lambda k = i + self.makeViewIndex : threading._start_new_thread(showImage, (illustList[k], ))
+                if buttons[i]['image'] == '':
+                    buttons[i]['image'] = tkImage[i]
+            else:
+                buttons.append(tk.Button(self.interior, height=200,
+                                                width =200,
+                                                image=tkImage[i],
+                                                command=lambda k = i + self.makeViewIndex : threading._start_new_thread(showImage, (illustList[k], ))))
+                buttons[i].grid(row=int(i/5), column=i%5)
+
+            self.makeViewThreadNumLock.acquire()
+            self.imageThreadNum += 1
+            threading._start_new_thread(loadImages, (i + self.makeViewIndex, i))
+            self.makeViewThreadNumLock.release()
+
+            self.makeViewIndexLock.release()
+            i = i + 1
 
 def makeillustList(haveNaxt, url, images, TkImage, buttons, searchStr):
     global illustList
@@ -188,31 +318,8 @@ def makeillustList(haveNaxt, url, images, TkImage, buttons, searchStr):
     f.write(s)
     f.close()
     i = 0
-    print('sorting')
-    while i < len(images):
-        if (not(os.path.isfile(illustList[i]['smallImageFileName']))):
-            byteIO = io.BytesIO(opener.open(illustList[i]['smallImgUrl']).read());
-            images[i] = (Image.open(byteIO))
-            images[i].convert('RGBA')
-            images[i].save(illustList[i]['smallImageFileName'])
-            d = ImageDraw.Draw(images[i])
-            d.text((images[i].width / 2, images[i].height/ 2 * 1.5), str(illustList[i]['book_num']), fill=(255,0,0,0), font=ImageFont.truetype("arial.ttf", size=40))
-            del d
-            byteIO.close()
-        else:
-            images[i] = (Image.open(illustList[i]['smallImageFileName']))
-            d = ImageDraw.Draw(images[i])
-            d.text((images[i].width / 2, images[i].height/ 2 * 1.5), str(illustList[i]['book_num']), fill=(255,0,0,0), font=ImageFont.truetype("arial.ttf", size=40))
-            del d
-        img = ImageTk.PhotoImage(images[i])
-        while i >= len(TkImage) :
-            time.sleep(0.5)
-        TkImage[i] = (img)
-        buttons[i]['image'] = TkImage[i]
-        buttons[i]['command'] = lambda k = i: threading._start_new_thread(showImage, (illustList[k],))
-        images[i].close()
-        i = i + 1
-    
+    print('sorting') #最後依照 book num 排序
+    frame._flushPage(1)
     Mbox("OK", "Search Finish", 0)
     print('finish')
     haveNaxt[1] = False
@@ -221,32 +328,6 @@ def singalImage(findres):
     arr = np.asarray(bytearray(opener.open(findres['data-src']).read()), dtype=np.uint8)
     img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
     return img
-
-def loadImages(limit, images):
-    global illustList
-    i = 0
-    while i < limit:
-        while not i < len(illustList):
-            if not haveNaxt[0]:
-                return
-            time.sleep(0.2)
-        if (not(os.path.isfile(illustList[i]['smallImageFileName']))):
-            arr = np.asarray(bytearray(opener.open(illustList[i]['smallImgUrl']).read()), dtype=np.uint8)
-            img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
-            arr.tofile(illustList[i]['smallImageFileName'])
-            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-            img = Image.fromarray(img)
-            d = ImageDraw.Draw(img)
-            d.text((img.width / 2, img.height/ 2 * 1.5), str(illustList[i]['book_num']), fill=(255,0,0,0), font=ImageFont.truetype("arial.ttf", size=40))
-            del d
-            images.append(img)
-        else:
-            img = Image.open(illustList[i]['smallImageFileName'])
-            d = ImageDraw.Draw(img)
-            d.text((img.width / 2, img.height / 2 * 1.5), str(illustList[i]['book_num']), fill=(255,0,0,0), font=ImageFont.truetype("arial.ttf", size=40))
-            del d
-            images.append(img)
-        i = i + 1
 
 def saveImage(illustInfo):
     global globalStr
@@ -304,6 +385,7 @@ def saveAllImages(minBookNum):
     minBookNum = int(minBookNum)
 
     if haveNaxt[1] is True:
+        Mbox("Error", "Operation has not ended", 0)
         return;
     haveNaxt[1] = True
     index = 0
@@ -367,33 +449,8 @@ def showImage(illustInfo):
     cv2.imshow(filename, img)
     cv2.waitKey(-1)
 
-def makeView(limit, frame, images, buttons, TkImage, searchStr):
-    global illustList
-    i = 0
-    while i < limit:
-        while not i < len(illustList):
-            if not haveNaxt[0]:
-                return
-            time.sleep(0.2)
-
-        while not i < len(images):
-            time.sleep(0.2)
-
-        TkImage.append(ImageTk.PhotoImage(images[i]))
-        if i < len(buttons):
-            buttons[i]['image'] = TkImage[i]
-            buttons[i]['command'] = lambda k = i: threading._start_new_thread(showImage, (illustList[k], ))
-        else:
-            buttons.append(tk.Button(frame.interior, height=200,
-                                           width =200,
-                                           image = TkImage[i],
-                                           command=lambda k = i: threading._start_new_thread(showImage, (illustList[k], ))))
-            buttons[i].grid(row=int(i/5), column=i%5)
-
-        images[i].close()
-        i = i + 1
-
 #login to pixiv
+
 id = 'thisismyxxx24@gmail.com'
 passwd = '3d1e2aehky2qwfui20vz'
 
