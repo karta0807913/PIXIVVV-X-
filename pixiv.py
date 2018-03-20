@@ -400,7 +400,7 @@ class Application(tk.Frame):
                                                 command=lambda illustInfo = self.illustList[i + self.makeViewIndex] : threading._start_new_thread(self.showImage, (illustInfo, ))))
                 self.buttons[i].grid(row=int(i/5), column=i%5)
                 self.buttons[i].bind("<MouseWheel>", self.canvasMouseWheelEvent)
-                self.buttons[i].bind("<Button-3>", lambda event, illlustUrl=self.illustList[i + self.makeViewIndex]['illustUrl'] : self.cloneTextToClipboard(illlustUrl))
+            self.buttons[i].bind("<Button-3>", lambda event, illlustUrl=self.illustList[i + self.makeViewIndex]['illustUrl'] : self.cloneTextToClipboard(illlustUrl))
 
             self.makeViewThreadNumLock.acquire()
             self.imageThreadNum += 1
