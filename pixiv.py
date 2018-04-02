@@ -41,6 +41,7 @@ class Application(tk.Frame):
         self.createWidgets()
         self.imagesPerPage = 250
         self.makeViewIndex = 0
+        self.master = master
         self.resetMakeViewFunction = False
         self.makeViewIndexLock = threading.Lock()
         self.makeViewThreadNumLock = threading.Lock()
@@ -217,6 +218,7 @@ class Application(tk.Frame):
         if not self.haveNaxt[1] and searchStr is not '':
             url = 'https://www.pixiv.net/search.php?word=' + urllib.parse.quote(searchStr) + '&order=date_d'
             if self.r18ModeCheckButtonVar.get() ^ self.safeModeCheckButtonVar.get() == 0:
+                self.fileFloderName=""
                 pass
             elif self.r18ModeCheckButtonVar.get() == 1:
                 url += '&mode=r18'
@@ -400,8 +402,8 @@ class Application(tk.Frame):
                                                 command=lambda illustInfo = self.illustList[i + self.makeViewIndex] : threading._start_new_thread(self.showImage, (illustInfo, ))))
                 self.buttons[i].grid(row=int(i/5), column=i%5)
                 self.buttons[i].bind("<MouseWheel>", self.canvasMouseWheelEvent)
-                self.buttons[i].bind("<Button-3>", lambda event, illlustUrl=self.illustList[i + self.makeViewIndex]['illustUrl'] : self.cloneTextToClipboard(illlustUrl))
 
+            self.buttons[i].bind("<Button-3>", lambda event, illlustUrl=self.illustList[i + self.makeViewIndex]['illustUrl'] : self.cloneTextToClipboard(illlustUrl))
             self.makeViewThreadNumLock.acquire()
             self.imageThreadNum += 1
             threading._start_new_thread(loadImages, (self.illustList[i + self.makeViewIndex], i))
@@ -421,6 +423,27 @@ class Application(tk.Frame):
         return img
 
     def showImage(self, illustInfo):
+
+        def computeWidthAndHeight(imgWidth, imgHeight, maxWidth, maxHeight):
+            width = 0
+            height = 0
+            if imgWidth > imgHeight :
+                width = maxWidth
+                height = imgHeight / imgWidth * maxWidth
+                pass
+            else :
+                width = imgWidth / imgHeight * maxHeight
+                height = maxHeight
+                pass
+            return (int(width), int(height))
+
+        def showImage(img, filename):
+            cv2.namedWindow(filename, cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO);
+            imgsize = computeWidthAndHeight(len(img[0]), len(img), self.master.winfo_screenwidth() / 2, self.master.winfo_screenheight())
+            cv2.resizeWindow(filename, imgsize)
+            cv2.imshow(filename, img)
+            cv2.waitKey(-1)
+
         filename = illustInfo['hugeImageFileName']
         if (not(os.path.isfile(filename))):
             response = self.opener.open('http://www.pixiv.net/member_illust.php?mode=medium&illust_id=' + str(illustInfo['illustNum']))
@@ -430,9 +453,7 @@ class Application(tk.Frame):
             if findres is not None:
                 img = self.singalImage(findres)
                 cv2.imencode('.jpg', img)[1].tofile(filename)
-                cv2.namedWindow(filename, cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO);
-                cv2.imshow(filename, img)
-                cv2.waitKey(-1)
+                showImage(img, filename)
                 return
             findres = soup.find('dev', class_='player toggle')
             #gif
@@ -459,14 +480,12 @@ class Application(tk.Frame):
                 else :
                     img = cv2.imdecode(np.fromfile(fn, dtype=np.uint8), cv2.IMREAD_COLOR)
 
-                cv2.namedWindow(fn, cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO);  
-                cv2.imshow(fn, img)
-                cv2.waitKey(-1)
+                showImage(img, fn)
+
                 i = i + 1
             return
         img = cv2.imdecode(np.fromfile(filename, dtype=np.uint8), cv2.IMREAD_COLOR)
-        cv2.namedWindow(filename, cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO);  
-        cv2.imshow(filename, img)
+        showImage(img, filename)
         cv2.waitKey(-1)
 
     def saveAllImages(self, minBookNum):
