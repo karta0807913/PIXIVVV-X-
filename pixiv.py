@@ -33,6 +33,105 @@ def Mbox(title, text, style):
 def getKey(item):
 	return item['book_num']
 
+class MultiImageBox(tk.Toplevel):
+    def __init__(self, master, opener, urlList, nameList):
+        tk.Toplevel.__init__(self)
+        self.geometry("400x300")
+        self.title("otherFrame")
+        self.urlList = urlList
+        self.nameList = nameList
+        self.opener = opener
+        self.master = master
+
+        self.imageView = tk.Label(self)
+        self.imageView.grid(row=0, column=1,)
+
+        self.nextImageButton = tk.Button(self)
+        self.nextImageButton['text'] = ">"
+        self.nextImageButton['command'] = self.nextImage
+        self.nextImageButton.grid(row=1, column=2)
+
+        self.indexLabel = tk.Label(self)
+        self.indexLabel['text'] = '1/' + str(len(urlList) + 1)
+        self.indexLabel.grid(row=1, column=1)
+
+        self.fontImageButton = tk.Button(self)
+        self.fontImageButton['text'] = "<"
+        self.fontImageButton['command'] = self.frontImage
+        self.fontImageButton.grid(row=1, column=0)
+        
+        self.imageList = [Image.new('RGB', (300, 300))] * len(urlList)
+        self.tkImageList = [ImageTk.PhotoImage(Image.new('RGB', (1, 1)))] * len(urlList)
+        self.imageIndex = 0
+        self.setImage(self.imageIndex)
+        self.resizable(False, False)
+
+        for i in range(len(urlList)) :
+            threading._start_new_thread(self.loadImage, (i,))
+
+    def loadImage(self, index):
+        def computeWidthAndHeight(imgWidth, imgHeight, maxWidth, maxHeight):
+            width = 0
+            height = 0
+            if imgWidth > imgHeight :
+                width = maxWidth
+                height = imgHeight / imgWidth * maxWidth
+                pass
+            else :
+                width = imgWidth / imgHeight * maxHeight
+                height = maxHeight
+                pass
+            return (int(width), int(height))
+
+        if(not(os.path.isfile(self.nameList[index]))):
+            if(self.urlList[index] == None) :
+                return
+            res = self.opener.open(self.urlList[index])
+            soup = BeautifulSoup(res.read(), 'html.parser')
+            find = soup.find('img')
+            byteIO = io.BytesIO(self.opener.open(find.attrs['src']).read());
+            self.imageList[index] = (Image.open(byteIO))
+            self.imageList[index].convert('RGBA')
+            self.imageList[index].save(self.nameList[index])
+            byteIO.close()
+        else :
+            self.imageList[index] = (Image.open(self.nameList[index])) #TODO
+
+        height, width = self.imageList[index].size
+        width, height = computeWidthAndHeight(width, height, 
+                                              self.master.winfo_screenwidth() / 2 - self.nextImageButton.winfo_height() * 5, 
+                                              self.master.winfo_screenheight() - self.nextImageButton.winfo_width() * 5)
+        self.imageList[index] = self.imageList[index].resize((height, width))
+        self.tkImageList[index] = ImageTk.PhotoImage(self.imageList[index])
+        if index == self.imageIndex:
+            self.setImage(index)
+
+    def nextImage(self):
+        if self.imageIndex + 1 == len(self.urlList):
+            Mbox("Info", "this is the last image", 0)
+            return 
+
+        self.imageIndex += 1;
+        self.setImage(self.imageIndex)
+
+    def frontImage(self):
+        if self.imageIndex == 0:
+            Mbox("Info", "this is the home image", 0)
+            return 
+
+        self.imageIndex -= 1;
+        self.setImage(self.imageIndex)
+
+    def setImage(self, index) :
+        if index < 0 or len(self.urlList) <= index :
+            return
+        height, width = self.imageList[index].size
+        self.geometry(str(height + self.nextImageButton.winfo_height() * 2) + "x" + str(width + self.nextImageButton.winfo_width() * 3))
+        self.imageView['image'] = self.tkImageList[index]
+        self.indexLabel['text'] = str(index + 1) + '/' + str(len(self.urlList))
+
+
+
 class Application(tk.Frame):
     def __init__(self, master=None):
         tk.Frame.__init__(self, master)
@@ -133,6 +232,10 @@ class Application(tk.Frame):
                 self.canvas.config(width=interior.winfo_reqwidth())
         interior.bind('<Configure>', _configure_interior) #如果視窗大小變化
 
+        def __window_size_change(event):
+            self.canvas.configure(height=self.master.winfo_height() - 84)
+        self.master.bind('<Configure>', __window_size_change)
+
     def openFile(self) :
         if self.haveNaxt[1] == True :
             Mbox("Info", "Operation is not ended")
@@ -187,7 +290,6 @@ class Application(tk.Frame):
             return opener
 
         #login to pixiv
-
         id = 'thisismyxxx24@gmail.com'
         passwd = '3d1e2aehky2qwfui20vz'
 
@@ -246,7 +348,7 @@ class Application(tk.Frame):
             artistName          = info['userName']
             illustName          = info['illustTitle']
             illustNum           = info['illustId']
-            filename            = re.sub(r"[\\\*\?/|<>:\"\x00-\x1F]", ".", artistName + '-' + illustName + '-' + str(illustNum) + '.jpg')
+            filename            = re.sub(r"[\\\*\?/|<>:\"\x00-\x1F]", ".", artistName + '-' + illustName + '-' + str(illustNum) + '.png')
             smallImageFileName  = './'+ searchStr + self.fileFloderName +'/' + filename
             hugeImageFileName   = './' + searchStr + self.fileFloderName + '/huge/' + filename
             book_num            = info['bookmarkCount']
@@ -441,8 +543,10 @@ class Application(tk.Frame):
             cv2.namedWindow(filename, cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO);
             imgsize = computeWidthAndHeight(len(img[0]), len(img), self.master.winfo_screenwidth() / 2, self.master.winfo_screenheight())
             cv2.resizeWindow(filename, imgsize)
+            cv2.moveWindow(filename, 0, 0)
             cv2.imshow(filename, img)
             cv2.waitKey(-1)
+            cv2.destroyWindow(filename)
 
         filename = illustInfo['hugeImageFileName']
         if (not(os.path.isfile(filename))):
@@ -452,7 +556,7 @@ class Application(tk.Frame):
             #normal image
             if findres is not None:
                 img = self.singalImage(findres)
-                cv2.imencode('.jpg', img)[1].tofile(filename)
+                cv2.imencode('.png', img)[1].tofile(filename)
                 showImage(img, filename)
                 return
             findres = soup.find('dev', class_='player toggle')
@@ -468,25 +572,39 @@ class Application(tk.Frame):
                 Mbox("Sorry", "I can not show gif, illust id is " + str(illustInfo['illustNum']), 0)
                 return 
             soup = BeautifulSoup(response.read(), 'html.parser')
+
+            filenameList = []
+            imageUrlList = []
             for url in soup.find_all('img', {'data-filter' : 'manga-image'}, class_='image ui-scroll-view'):
                 if(i == 0):
                     fn=filename
                 else:
-                    fn = filename[0 : len(filename) - 4] + '-' + str(i) + filename[len(filename) - 4 : len(filename)] # <filename> - <str(i)> .jpg
-                if (not (os.path.isfile(fn))):
-                    arr = np.asarray(bytearray(self.opener.open(url['data-src']).read()), dtype=np.uint8)
-                    img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
-                    arr.tofile(fn)
-                else :
-                    img = cv2.imdecode(np.fromfile(fn, dtype=np.uint8), cv2.IMREAD_COLOR)
+                    fn = filename[0 : len(filename) - 4] + '-' + str(i) + filename[len(filename) - 4 : len(filename)] # <filename> - <str(i)> .png
 
-                showImage(img, fn)
-
+                filenameList.append(fn)
+                imageUrlList.append('https://www.pixiv.net/member_illust.php?mode=manga_big&illust_id='+str(illustInfo['illustNum'])+'&page='+str(i))
                 i = i + 1
+
+            multiImageBox = MultiImageBox(self.master, self.opener, imageUrlList, filenameList)
+            #threading._start_new_thread(multiImageBox.mainloop, ())
+            return
+
+        if os.path.isfile(filename[0 : len(filename) - 4] + '-' + str(1) + filename[len(filename) - 4 : len(filename)]) :
+            filenameList = [filename]
+            __filename = filename[0 : len(filename) - 4] + '-'
+            __extenstion = filename[len(filename) - 4 : len(filename)]
+            i = 1
+            while os.path.isfile(__filename + str(i) + __extenstion) :
+                filenameList.append(__filename + str(i) + __extenstion)
+                i += 1
+
+            imageUrlList = [None] * len(filenameList)
+            multiImageBox = MultiImageBox(self.master, self.opener, imageUrlList, filenameList)
             return
         img = cv2.imdecode(np.fromfile(filename, dtype=np.uint8), cv2.IMREAD_COLOR)
         showImage(img, filename)
         cv2.waitKey(-1)
+        cv2.destroyWindow(filename)
 
     def saveAllImages(self, minBookNum):
         global limit
@@ -508,7 +626,7 @@ class Application(tk.Frame):
 
                 if findres is not None:
                     img = self.singalImage(findres)
-                    cv2.imencode('.jpg', img)[1].tofile(filename)
+                    cv2.imencode('.png', img)[1].tofile(filename)
                     print("saving " + str(illustInfo['illustNum']))
                     nowThreadLines -= 1
                     return
@@ -527,7 +645,7 @@ class Application(tk.Frame):
                     if (not (os.path.isfile(fn))):
                         arr = np.asarray(bytearray(self.opener.open(url['data-src']).read()), dtype=np.uint8)
                         img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
-                        cv2.imencode('.jpg', img)[1].tofile(fn)
+                        cv2.imencode('.png', img)[1].tofile(fn)
                         print("saving " + str(illustInfo['illustNum']) + '-' + str(i))
                     i = i + 1
                 nowThreadLines -= 1
@@ -556,6 +674,6 @@ class Application(tk.Frame):
         self.haveNaxt[1] = False
 
 root = tk.Tk()
-root.resizable(False,False)
+root.resizable(False,True)
 frame = Application(master=root)
 frame.mainloop()
