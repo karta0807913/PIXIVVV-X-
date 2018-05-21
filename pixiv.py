@@ -1,4 +1,5 @@
-﻿from PIL import Image, ImageTk, ImageDraw, ImageFont
+# coding=UTF-8
+from PIL import Image, ImageTk, ImageDraw, ImageFont
 from bs4 import BeautifulSoup
 import tkinter as tk
 from tkinter import filedialog
@@ -18,6 +19,14 @@ import ctypes
 import cv2
 import numpy as np
 import socket
+from tkinter import messagebox
+
+if os.name == 'nt':
+    font_type = "arial.ttf"
+elif os.name == 'posix':
+    font_type = "/usr/share/fonts/truetype/freefont/FreeMono.ttf"
+else: 
+    font_type = "arial.ttf"
 
 loginpage = 'http://www.pixiv.net/login.php/'
 loginposturl = 'https://accounts.pixiv.net/api/login?lang=zh_tw'
@@ -28,7 +37,10 @@ threadLines = 5
 nowThreadLines = 0
 
 def Mbox(title, text, style):
-    return ctypes.windll.user32.MessageBoxW(0, text, title, style)
+    if os.name == 'nt':
+        return ctypes.windll.user32.MessageBoxW(0, text, title, style)
+    else:
+        return tkMessageBox.showwarning(title, text)
 
 def getKey(item):
 	return item['book_num']
@@ -230,7 +242,7 @@ class Application(tk.Frame):
             if interior.winfo_reqwidth() != self.canvas.winfo_width():
                 # update the canvas's width to fit the inner frame
                 self.canvas.config(width=interior.winfo_reqwidth())
-        interior.bind('<Configure>', _configure_interior) #如果視窗大小變化
+        interior.bind('<Configure>', _configure_interior) 
 
         def __window_size_change(event):
             self.canvas.configure(height=self.master.winfo_height() - 84)
@@ -390,7 +402,7 @@ class Application(tk.Frame):
         f.write(s)
         f.close()
         i = 0
-        print('sorting') #最後依照 book num 排序
+        print('sorting')
         frame._flushPage(1)
         Mbox("OK", "Search Finish", 0)
         print('finish')
@@ -459,7 +471,7 @@ class Application(tk.Frame):
                     color=(255)
                 else :
                     color=(255,0,0,0)
-                d.text((img.width / 2, img.height/ 2 * 1.5), str(illustinfo['book_num']), fill=color, font=ImageFont.truetype("arial.ttf", size=40))
+                d.text((img.width / 2, img.height/ 2 * 1.5), str(illustinfo['book_num']), fill=color, font=ImageFont.truetype(font_type, size=40))
                 del d
                 self.tkImage[index] = ImageTk.PhotoImage(img)
                 self.buttons[index]['image'] = self.tkImage[index]
@@ -470,7 +482,7 @@ class Application(tk.Frame):
                     color=(255)
                 else :
                     color=(255,0,0,0)
-                d.text((img.width / 2, img.height/ 2 * 1.5), str(illustinfo['book_num']), fill=color, font=ImageFont.truetype("arial.ttf", size=40))
+                d.text((img.width / 2, img.height/ 2 * 1.5), str(illustinfo['book_num']), fill=color, font=ImageFont.truetype(font_type, size=40))
                 del d
                 self.tkImage[index] = ImageTk.PhotoImage(img)
                 self.buttons[index]['image'] = self.tkImage[index]
