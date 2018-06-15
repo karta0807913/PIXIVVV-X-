@@ -37,29 +37,29 @@ class MultiImageBox(tk.Toplevel):
     def __init__(self, master, opener, urlList, nameList):
         tk.Toplevel.__init__(self)
         self.geometry("400x300")
-        self.title("otherFrame")
+        self.title(nameList[0])
         self.urlList = urlList
         self.nameList = nameList
         self.opener = opener
         self.master = master
-
+        
         self.imageView = tk.Label(self)
         self.imageView.grid(row=0, column=1,)
 
         self.nextImageButton = tk.Button(self)
-        self.nextImageButton['text'] = ">"
+        self.nextImageButton['text'] = "=>"
         self.nextImageButton['command'] = self.nextImage
-        self.nextImageButton.grid(row=1, column=2)
+        self.nextImageButton.grid(row=1, column=3)
 
         self.indexLabel = tk.Label(self)
         self.indexLabel['text'] = '1/' + str(len(urlList) + 1)
         self.indexLabel.grid(row=1, column=1)
 
         self.fontImageButton = tk.Button(self)
-        self.fontImageButton['text'] = "<"
+        self.fontImageButton['text'] = "<="
         self.fontImageButton['command'] = self.frontImage
         self.fontImageButton.grid(row=1, column=0)
-        
+
         self.imageList = [Image.new('RGB', (300, 300))] * len(urlList)
         self.tkImageList = [ImageTk.PhotoImage(Image.new('RGB', (1, 1)))] * len(urlList)
         self.imageIndex = 0
@@ -96,12 +96,12 @@ class MultiImageBox(tk.Toplevel):
             byteIO.close()
         else :
             self.imageList[index] = (Image.open(self.nameList[index])) #TODO
-
-        height, width = self.imageList[index].size
+            
+        width, height = self.imageList[index].size
         width, height = computeWidthAndHeight(width, height, 
                                               self.master.winfo_screenwidth() / 2 - self.nextImageButton.winfo_height() * 5, 
                                               self.master.winfo_screenheight() - self.nextImageButton.winfo_width() * 5)
-        self.imageList[index] = self.imageList[index].resize((height, width))
+        self.imageList[index] = self.imageList[index].resize((width, height))
         self.tkImageList[index] = ImageTk.PhotoImage(self.imageList[index])
         if index == self.imageIndex:
             self.setImage(index)
@@ -125,8 +125,8 @@ class MultiImageBox(tk.Toplevel):
     def setImage(self, index) :
         if index < 0 or len(self.urlList) <= index :
             return
-        height, width = self.imageList[index].size
-        self.geometry(str(height + self.nextImageButton.winfo_height() * 2) + "x" + str(width + self.nextImageButton.winfo_width() * 3))
+        width, height = self.imageList[index].size
+        self.geometry(str(width + self.nextImageButton.winfo_width() * 3) + "x" + str(height + self.nextImageButton.winfo_height() * 2))
         self.imageView['image'] = self.tkImageList[index]
         self.indexLabel['text'] = str(index + 1) + '/' + str(len(self.urlList))
 
@@ -335,8 +335,7 @@ class Application(tk.Frame):
             self._flushPage(1)
             threading._start_new_thread(self.makeillustList, (url, searchStr, ))
         
-    def make_illust_list(self, imageItems, searchStr):
-        searchStr = re.sub(r"[\\\*\?/|<>:\"\x00-\x1F]", "", searchStr)
+    def _make_illust_list(self, imageItems, searchStr):
         if (not(os.path.exists('./' + searchStr + self.fileFloderName + '/'))):
             os.makedirs('./' + searchStr + self.fileFloderName +'/')
         if (not(os.path.exists('./' + searchStr + self.fileFloderName + '/huge'))):
@@ -348,9 +347,9 @@ class Application(tk.Frame):
             artistName          = info['userName']
             illustName          = info['illustTitle']
             illustNum           = info['illustId']
-            filename            = re.sub(r"[\\\*\?/|<>:\"\x00-\x1F]", ".", artistName + '-' + illustName + '-' + str(illustNum) + '.png')
-            smallImageFileName  = './'+ searchStr + self.fileFloderName +'/' + filename
-            hugeImageFileName   = './' + searchStr + self.fileFloderName + '/huge/' + filename
+            filename            = re.sub(r"[\\\*\?/|<>:\"\x00-\x1F]", ".", artistName + '-' + illustName + '-' + str(illustNum))
+            smallImageFileName  = './'+ searchStr + self.fileFloderName +'/' + filename + '.jpg'
+            hugeImageFileName   = './' + searchStr + self.fileFloderName + '/huge/' + filename + '.png'
             book_num            = info['bookmarkCount']
             smallImgUrl         = info['url']
 
@@ -365,6 +364,7 @@ class Application(tk.Frame):
 
     def makeillustList(self, url, searchStr):
         searchStr = self.input.get()
+        searchStr = re.sub(r"[\\\*\?/|<>:\"\x00-\x1F]", "", searchStr)
         response = None
         while True:
             while True:
@@ -375,7 +375,7 @@ class Application(tk.Frame):
                 except :
                     continue
 
-            self.make_illust_list(soup, searchStr)
+            self._make_illust_list(soup, searchStr)
             nextPage = soup.find('a', {'rel' : 'next'}, class_='_button')
             if nextPage is None :
                 break
@@ -520,7 +520,7 @@ class Application(tk.Frame):
         Mbox("ok", "cloned url", 0)
 
     def singalImage(self, findres):
-        arr = np.asarray(bytearray(self.opener.open(findres['data-src']).read()), dtype=np.uint8)
+        arr = np.asarray(bytearray(self.opener.open(findres).read()), dtype=np.uint8)
         img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
         return img
 
@@ -550,33 +550,36 @@ class Application(tk.Frame):
 
         filename = illustInfo['hugeImageFileName']
         if (not(os.path.isfile(filename))):
-            response = self.opener.open('http://www.pixiv.net/member_illust.php?mode=medium&illust_id=' + str(illustInfo['illustNum']))
-            soup = BeautifulSoup(response.read(), 'html.parser')
-            findres = soup.find('img', class_='original-image')
+            if 'PageCount' not in illustInfo:
+                response = self.opener.open('http://www.pixiv.net/member_illust.php?mode=medium&illust_id=' + str(illustInfo['illustNum']))
+                data  = response.read().decode('utf-8')
+                if not data.find('ugoira') == -1:
+                    illustInfo['PageCount'] = -1
+                    Mbox("Sorry", "I can not show gif, illust id is " + str(illustInfo['illustNum']), 0)
+                    return
+
+                start = data.find('"' + str(illustInfo['illustNum']) + '":')
+                start = data[start:].find('"pageCount":') + start + 12
+                end   = data[start:].find(',') + start
+                illustInfo['PageCount'] = int(data[start:end])
+
+            if illustInfo['PageCount'] == -1:
+                Mbox("Sorry", "I can not show gif, illust id is " + str(illustInfo['illustNum']), 0)
+                return
+
             #normal image
-            if findres is not None:
-                img = self.singalImage(findres)
+            if illustInfo['PageCount'] == 1:
+                start = data.find('"original":"') + 12
+                end   = data[start:].find('"') + start
+                img = self.singalImage(data[start:end].replace('\\', ''))
                 cv2.imencode('.png', img)[1].tofile(filename)
                 showImage(img, filename)
                 return
-            findres = soup.find('dev', class_='player toggle')
-            #gif
-            if findres is not None:
-                Mbox("Sorry", "I can not show gif, illust id is " + str(illustInfo['illustNum']), 0)
-                return
-            #圖集
-            i = 0
-            try:
-                response = self.opener.open('http://www.pixiv.net/member_illust.php?mode=manga&illust_id=' + str(illustInfo['illustNum']))
-            except urllib.error.HTTPError:
-                Mbox("Sorry", "I can not show gif, illust id is " + str(illustInfo['illustNum']), 0)
-                return 
-            soup = BeautifulSoup(response.read(), 'html.parser')
 
             filenameList = []
             imageUrlList = []
-            for url in soup.find_all('img', {'data-filter' : 'manga-image'}, class_='image ui-scroll-view'):
-                if(i == 0):
+            for i in range(illustInfo['PageCount']):
+                if i == 0:
                     fn=filename
                 else:
                     fn = filename[0 : len(filename) - 4] + '-' + str(i) + filename[len(filename) - 4 : len(filename)] # <filename> - <str(i)> .png
@@ -615,39 +618,53 @@ class Application(tk.Frame):
             global nowThreadLines
             filename = illustInfo['hugeImageFileName']
             if (not(os.path.isfile(filename))):
-                while True:
-                    try:
-                        response = self.opener.open('http://www.pixiv.net/member_illust.php?mode=medium&illust_id=' + str(illustInfo['illustNum']), timeout=4)
-                        soup = BeautifulSoup(response.read(), 'html.parser')
-                        break
-                    except (urllib.error.URLError, socket.timeout) as e:
-                        continue
-                findres = soup.find('img', class_='original-image')
+                if 'PageCount' not in illustInfo:
+                    while True:
+                        try:
+                            response = self.opener.open('http://www.pixiv.net/member_illust.php?mode=medium&illust_id=' + str(illustInfo['illustNum']), timeout=4)
+                            data  = response.read().decode('utf-8')
+                            break
+                        except (urllib.error.URLError, socket.timeout) as e:
+                            continue
+                    if not data.find('ugoira') == -1:
+                        illustInfo['PageCount'] = -1
+                        nowThreadLines -= 1
+                        return
 
-                if findres is not None:
-                    img = self.singalImage(findres)
+                    start = data.find('"' + str(illustInfo['illustNum']) + '":')
+                    start = data[start:].find('"pageCount":') + start + 12
+                    end   = data[start:].find(',') + start
+                    illustInfo['PageCount'] = int(data[start:end])
+
+                if illustInfo['PageCount'] == 1:
+                    start = data.find('"original":"') + 12
+                    end   = data[start:].find('"') + start
+                    img = self.singalImage(data[start:end].replace('\\', ''))
                     cv2.imencode('.png', img)[1].tofile(filename)
                     print("saving " + str(illustInfo['illustNum']))
                     nowThreadLines -= 1
                     return
-                findres = soup.find('div', class_='player toggle')
-                if findres is not None:
-                    nowThreadLines -= 1
-                    return
-                i = 0
-                try:
-                    response = self.opener.open('http://www.pixiv.net/member_illust.php?mode=manga&illust_id=' + str(illustInfo['illustNum']))
-                except urllib.error.HTTPError:
-                    return
-                soup = BeautifulSoup(response.read(), 'html.parser')
-                for url in soup.find_all('img', {'data-filter' : 'manga-image'}, class_='image ui-scroll-view'):
-                    fn = filename[0 : len(filename) - 4] + '-' + str(i) + filename[len(filename) - 4 : len(filename)]
+
+                for i in range(illustInfo['PageCount']):
+                    if i == 0:
+                        fn = filename
+                    else:
+                        fn = filename[0 : len(filename) - 4] + '-' + str(i) + filename[len(filename) - 4 : len(filename)]
                     if (not (os.path.isfile(fn))):
-                        arr = np.asarray(bytearray(self.opener.open(url['data-src']).read()), dtype=np.uint8)
-                        img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
-                        cv2.imencode('.png', img)[1].tofile(fn)
+                        while True:
+                            try:
+                                res = self.opener.open('https://www.pixiv.net/member_illust.php?mode=manga_big&illust_id='+str(illustInfo['illustNum'])+'&page='+str(i))
+                                soup = BeautifulSoup(res.read(), 'html.parser')
+                                break
+                            except urllib.error.HTTPError:
+                                continue
                         print("saving " + str(illustInfo['illustNum']) + '-' + str(i))
-                    i = i + 1
+                        find = soup.find('img')
+                        byteIO = io.BytesIO(self.opener.open(find.attrs['src']).read());
+                        img = (Image.open(byteIO))
+                        img.convert('RGBA')
+                        img.save(fn)
+                        byteIO.close()
                 nowThreadLines -= 1
                 return
             nowThreadLines -= 1
