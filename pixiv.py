@@ -1,4 +1,4 @@
-# coding=UTF-8
+﻿# coding=UTF-8
 from PIL import Image, ImageTk, ImageDraw, ImageFont
 from bs4 import BeautifulSoup
 import tkinter as tk
@@ -25,7 +25,7 @@ if os.name == 'nt':
     font_type = "arial.ttf"
 elif os.name == 'posix':
     font_type = "/usr/share/fonts/truetype/freefont/FreeMono.ttf"
-else: 
+else:
     font_type = "arial.ttf"
 
 loginpage = 'http://www.pixiv.net/login.php/'
@@ -54,7 +54,7 @@ class MultiImageBox(tk.Toplevel):
         self.nameList = nameList
         self.opener = opener
         self.master = master
-        
+
         self.imageView = tk.Label(self)
         self.imageView.grid(row=0, column=1,)
 
@@ -108,10 +108,10 @@ class MultiImageBox(tk.Toplevel):
             byteIO.close()
         else :
             self.imageList[index] = (Image.open(self.nameList[index])) #TODO
-            
+
         width, height = self.imageList[index].size
-        width, height = computeWidthAndHeight(width, height, 
-                                              self.master.winfo_screenwidth() / 2 - self.nextImageButton.winfo_height() * 5, 
+        width, height = computeWidthAndHeight(width, height,
+                                              self.master.winfo_screenwidth() / 2 - self.nextImageButton.winfo_height() * 5,
                                               self.master.winfo_screenheight() - self.nextImageButton.winfo_width() * 5)
         self.imageList[index] = self.imageList[index].resize((width, height))
         self.tkImageList[index] = ImageTk.PhotoImage(self.imageList[index])
@@ -121,7 +121,7 @@ class MultiImageBox(tk.Toplevel):
     def nextImage(self):
         if self.imageIndex + 1 == len(self.urlList):
             Mbox("Info", "this is the last image", 0)
-            return 
+            return
 
         self.imageIndex += 1;
         self.setImage(self.imageIndex)
@@ -129,7 +129,7 @@ class MultiImageBox(tk.Toplevel):
     def frontImage(self):
         if self.imageIndex == 0:
             Mbox("Info", "this is the home image", 0)
-            return 
+            return
 
         self.imageIndex -= 1;
         self.setImage(self.imageIndex)
@@ -171,7 +171,7 @@ class Application(tk.Frame):
         else:
             self.canvas.yview_scroll(-3, tk.UNITS)
     def createWidgets(self):
-        self.input          = tk.Entry(self) 
+        self.input          = tk.Entry(self)
         self.input['width'] = 60
         self.input.grid(row=0, column=1, columnspan=6)
 
@@ -199,7 +199,7 @@ class Application(tk.Frame):
         self.saveButton['text'] = 'save images'
         self.saveButton.grid(row=8, column=1,)
         self.saveButton['command'] = lambda : threading._start_new_thread(self.saveAllImages, (frame.minBookNum.get(), ));
-        
+
         self.minBookNumStringVar = tk.StringVar()
         self.minBookNumStringVar.trace('w', self.minBookNumTrace)
 
@@ -242,7 +242,7 @@ class Application(tk.Frame):
             if interior.winfo_reqwidth() != self.canvas.winfo_width():
                 # update the canvas's width to fit the inner frame
                 self.canvas.config(width=interior.winfo_reqwidth())
-        interior.bind('<Configure>', _configure_interior) 
+        interior.bind('<Configure>', _configure_interior)
 
         def __window_size_change(event):
             self.canvas.configure(height=self.master.winfo_height() - 84)
@@ -346,16 +346,17 @@ class Application(tk.Frame):
             self.illustList = []
             self._flushPage(1)
             threading._start_new_thread(self.makeillustList, (url, searchStr, ))
-        
+
     def _make_illust_list(self, imageItems, searchStr):
         if (not(os.path.exists('./' + searchStr + self.fileFloderName + '/'))):
             os.makedirs('./' + searchStr + self.fileFloderName +'/')
         if (not(os.path.exists('./' + searchStr + self.fileFloderName + '/huge'))):
             os.makedirs('./' + searchStr + self.fileFloderName + '/huge')
-    
+
         infos = json.loads(imageItems.find('input', id='js-mount-point-search-result-list')['data-items']);
         for info in infos:
-        
+            if info["illustId"] == None:
+                continue
             artistName          = info['userName']
             illustName          = info['illustTitle']
             illustNum           = info['illustId']
@@ -407,14 +408,14 @@ class Application(tk.Frame):
         Mbox("OK", "Search Finish", 0)
         print('finish')
         self.haveNaxt[1] = False
-        
+
     def minBookNumTrace(self, *args):
         self.minBookNumStringVar.set(re.sub(r'[^0-9]', '', self.minBookNumStringVar.get()))
 
     def nextPage(self):
         if self.imagesPerPage + self.makeViewIndex > len(self.illustList):
             Mbox("Info", "this is the last page", 0)
-            return 
+            return
 
         self.makeViewIndexLock.acquire()
         self.canvas.yview_moveto(0)
@@ -425,7 +426,7 @@ class Application(tk.Frame):
     def fontPage(self):
         if self.makeViewIndex - self.imagesPerPage < 0:
             Mbox("Info", "this is the home page", 0)
-            return 
+            return
 
         self.makeViewIndexLock.acquire()
         self.canvas.yview_moveto(0)
@@ -439,7 +440,7 @@ class Application(tk.Frame):
             return
         if self.imagesPerPage * (pageIndex - 1) == self.makeViewIndex :
             return
-        
+
         self.makeViewIndexLock.acquire()
         self.canvas.yview_moveto(0)
         self.resetMakeViewFunction = True
@@ -450,7 +451,7 @@ class Application(tk.Frame):
         if self.imagesPerPage * (pageIndex - 1) < 0 or self.imagesPerPage * (pageIndex - 1) > len(self.illustList) :
             Mbox("Info", "Error page index", 0)
             return
-        
+
         self.makeViewIndexLock.acquire()
         self.canvas.yview_moveto(0)
         self.resetMakeViewFunction = True
